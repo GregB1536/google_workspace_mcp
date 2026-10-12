@@ -469,6 +469,11 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Google Workspace MCP Server")
     parser.add_argument(
+        "--health",
+        action="store_true",
+        help="Check that OAuth credentials and env vars are present, print OK or the missing item, then exit",
+    )
+    parser.add_argument(
         "--single-user",
         action="store_true",
         help="Run in single-user mode - bypass session mapping and use any credentials from the credentials directory",
@@ -518,6 +523,11 @@ def main():
         ),
     )
     args = parser.parse_args()
+
+    if args.health:
+        from auth.health import run as run_health
+
+        sys.exit(run_health())
 
     # Validate the memory-safety settings once at startup. Tool helpers parse them
     # defensively as well, but a deployment typo must not silently disable the
