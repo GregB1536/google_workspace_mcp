@@ -41,7 +41,7 @@ def test_half_set_names_the_missing_one(clean_env, monkeypatch, capsys):
     monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "dummy-id")
     assert health.run() == 1
     out = capsys.readouterr().out
-    assert "Missing env var GOOGLE_OAUTH_CLIENT_SECRET" in out
+    assert "env var GOOGLE_OAUTH_CLIENT_SECRET is not set" in out
     assert "dummy-id" not in out
 
 
@@ -63,7 +63,30 @@ def test_secrets_file_ok(clean_env, capsys):
 def test_bad_secrets_file_named(clean_env, capsys):
     (clean_env / "client_secret.json").write_text("not json")
     assert health.run() == 1
-    assert str(clean_env / "client_secret.json") in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert str(clean_env / "client_secret.json") in out
+    # The broken file must not hide the missing env vars.
+    assert "GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET are not set" in out
+
+
+def test_bad_secrets_file_names_the_missing_env_var(clean_env, monkeypatch, capsys):
+    (clean_env / "client_secret.json").write_text("not json")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "dummy-secret-value")
+    assert health.run() == 1
+    out = capsys.readouterr().out
+    assert "env var GOOGLE_OAUTH_CLIENT_ID is not set" in out
+    assert "not valid JSON" in out
+    assert "dummy-secret-value" not in out
+
+
+def test_bad_secrets_file_is_only_a_warning_when_env_vars_set(clean_env, monkeypatch, capsys):
+    (clean_env / "client_secret.json").write_text("not json")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "dummy-id")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "dummy-secret-value")
+    assert health.run() == 0
+    out = capsys.readouterr().out
+    assert "Warning:" in out and "not used while the env vars are set" in out
+    assert out.strip().endswith("OK")
 
 
 def test_module_exit_codes_subprocess(tmp_path):

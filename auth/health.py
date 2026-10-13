@@ -39,6 +39,10 @@ def check_credentials() -> Tuple[List[str], List[str]]:
     has_secret = bool(os.getenv(_SECRET_ENV))
     secrets_path = get_client_secrets_path()
     secrets_file_ok = False
+    # Why the file cannot be used; None when it is usable.
+    file_problem: Optional[str] = (
+        f"client secrets file {secrets_path} does not exist"
+    )
 
     if os.path.isfile(secrets_path):
         try:
@@ -46,40 +50,37 @@ def check_credentials() -> Tuple[List[str], List[str]]:
                 data = json.load(f)
             if isinstance(data, dict) and ("web" in data or "installed" in data):
                 secrets_file_ok = True
+                file_problem = None
             else:
-                errors.append(
-                    f"Client secrets file {secrets_path} has no 'web' or 'installed' "
-                    "section; re-download it from Google Cloud Console."
+                file_problem = (
+                    f"client secrets file {secrets_path} has no 'web' or 'installed' "
+                    "section (re-download it from Google Cloud Console)"
                 )
         except (OSError, ValueError) as exc:
-            errors.append(
-                f"Client secrets file {secrets_path} is unreadable or not valid JSON "
-                f"({type(exc).__name__})."
+            file_problem = (
+                f"client secrets file {secrets_path} is unreadable or not valid JSON "
+                f"({type(exc).__name__})"
             )
 
+    # Env vars take precedence over the file (auth.oauth_config), so a broken
+    # file only fails the check when the env vars do not cover for it.
     if has_id and has_secret:
         notes.append(f"OAuth client: {_ID_ENV} and {_SECRET_ENV} are set.")
+        if file_problem and os.path.isfile(secrets_path):
+            notes.append(f"Warning: {file_problem}; not used while the env vars are set.")
     elif secrets_file_ok:
         notes.append(f"OAuth client: client secrets file found at {secrets_path}.")
-    elif not errors:
-        if has_id and not has_secret:
-            errors.append(
-                f"Missing env var {_SECRET_ENV} ({_ID_ENV} is set). Set it, or provide "
-                f"a client secrets file at {secrets_path} "
-                "(path override: GOOGLE_CLIENT_SECRET_PATH)."
-            )
-        elif has_secret and not has_id:
-            errors.append(
-                f"Missing env var {_ID_ENV} ({_SECRET_ENV} is set). Set it, or provide "
-                f"a client secrets file at {secrets_path} "
-                "(path override: GOOGLE_CLIENT_SECRET_PATH)."
-            )
+    else:
+        if has_id:
+            env_problem = f"env var {_SECRET_ENV} is not set ({_ID_ENV} is set)"
+        elif has_secret:
+            env_problem = f"env var {_ID_ENV} is not set ({_SECRET_ENV} is set)"
         else:
-            errors.append(
-                f"Missing OAuth client credentials: env vars {_ID_ENV} and "
-                f"{_SECRET_ENV} are not set, and client secrets file {secrets_path} "
-                "does not exist (path override: GOOGLE_CLIENT_SECRET_PATH)."
-            )
+            env_problem = f"env vars {_ID_ENV} and {_SECRET_ENV} are not set"
+        errors.append(
+            f"Missing OAuth client credentials: {env_problem}, and {file_problem}. "
+            "Fix either one (path override: GOOGLE_CLIENT_SECRET_PATH)."
+        )
 
     creds_dir, source = _credentials_dir()
     if os.path.isdir(creds_dir):
